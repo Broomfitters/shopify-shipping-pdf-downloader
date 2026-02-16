@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Shopify PDF Auto-Downloader",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Automatically download Shopify shipping labels and packing slips with one click",
   "permissions": [
     "downloads"

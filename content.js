@@ -9,17 +9,46 @@ const PDF_URLS = {
 // Broomfitters red color
 const BROOMFITTERS_RED = '#C41E3A';
 
-// Function to find the button container
-function findPrintButtonsContainer() {
-  const buttons = Array.from(document.querySelectorAll('button'));
-  const shippingLabelButton = buttons.find(btn =>
+// Function to find print buttons (supports both native <button> and Shopify <s-internal-button>)
+function findPrintButtons() {
+  // Search both native buttons and Shopify's custom button elements
+  const candidates = Array.from(document.querySelectorAll('button, s-internal-button'));
+  console.log('[PDF-DL] Found', candidates.length, 'button candidates');
+  console.log('[PDF-DL] Button texts:', candidates.map(b => `<${b.tagName.toLowerCase()}> "${b.textContent.trim()}"`));
+
+  const shippingLabelButton = candidates.find(btn =>
     btn.textContent.includes('Print 1 shipping label') ||
     btn.textContent.includes('Reprint 1 shipping label')
   );
+  const packingSlipButton = candidates.find(btn =>
+    btn.textContent.includes('Print 1 packing slip')
+  );
+
+  console.log('[PDF-DL] Shipping label button:', shippingLabelButton ? `found <${shippingLabelButton.tagName.toLowerCase()}>` : 'NOT FOUND');
+  console.log('[PDF-DL] Packing slip button:', packingSlipButton ? `found <${packingSlipButton.tagName.toLowerCase()}>` : 'NOT FOUND');
+
+  return { shippingLabelButton, packingSlipButton };
+}
+
+// Function to find the button container
+function findPrintButtonsContainer() {
+  const { shippingLabelButton } = findPrintButtons();
 
   if (shippingLabelButton) {
     // Find the parent container that holds both buttons
-    return shippingLabelButton.closest('.Polaris-LegacyStack--vertical');
+    const container = shippingLabelButton.closest('.Polaris-LegacyStack--vertical');
+    console.log('[PDF-DL] .Polaris-LegacyStack--vertical container:', container ? 'found' : 'NOT FOUND');
+    if (!container) {
+      // Log the parent chain to help debug
+      let el = shippingLabelButton;
+      const chain = [];
+      while (el && chain.length < 10) {
+        chain.push(`<${el.tagName.toLowerCase()}${el.className ? ' class="' + el.className + '"' : ''}>`);
+        el = el.parentElement;
+      }
+      console.log('[PDF-DL] Parent chain from button:', chain.join(' → '));
+    }
+    return container;
   }
   return null;
 }
@@ -28,7 +57,7 @@ function findPrintButtonsContainer() {
 function injectDownloadButton() {
   const container = findPrintButtonsContainer();
   if (!container) {
-    console.log('Print buttons container not found, retrying...');
+    console.log('[PDF-DL] Print buttons container not found, retrying...');
     return false;
   }
 
@@ -62,7 +91,7 @@ function injectDownloadButton() {
   // Add click handler
   button.addEventListener('click', handleDownloadBothClick);
 
-  console.log('Download Both button injected successfully');
+  console.log('[PDF-DL] Download Both button injected successfully');
   return true;
 }
 
@@ -99,17 +128,11 @@ async function handleDownloadBothClick(e) {
 // Trigger the actual downloads by clicking the original buttons and capturing URLs
 async function triggerDownloads() {
   // Find the original buttons
-  const buttons = Array.from(document.querySelectorAll('button'));
-  const shippingLabelButton = buttons.find(btn =>
-    btn.textContent.includes('Print 1 shipping label') ||
-    btn.textContent.includes('Reprint 1 shipping label')
-  );
-  const packingSlipButton = buttons.find(btn =>
-    btn.textContent.includes('Print 1 packing slip')
-  );
+  const { shippingLabelButton, packingSlipButton } = findPrintButtons();
 
   if (!shippingLabelButton || !packingSlipButton) {
-    console.error('Could not find buttons. Available buttons:', buttons.map(b => b.textContent));
+    const candidates = Array.from(document.querySelectorAll('button, s-internal-button'));
+    console.error('Could not find buttons. Available buttons:', candidates.map(b => b.textContent));
     throw new Error('Could not find original print buttons');
   }
 
@@ -186,15 +209,17 @@ function setupURLCapture() {
 function init() {
   // Try to inject button immediately
   if (injectDownloadButton()) {
-    console.log('Shopify PDF Auto-Downloader initialized');
+    console.log('[PDF-DL] Initialized successfully');
     return;
   }
+
+  console.log('[PDF-DL] Buttons not ready, watching for DOM changes...');
 
   // If not found, watch for DOM changes
   const observer = new MutationObserver(() => {
     if (injectDownloadButton()) {
       observer.disconnect();
-      console.log('Shopify PDF Auto-Downloader initialized after DOM change');
+      console.log('[PDF-DL] Initialized after DOM change');
     }
   });
 
@@ -213,7 +238,7 @@ new MutationObserver(() => {
   const currentUrl = location.href;
   if (currentUrl !== lastUrl) {
     lastUrl = currentUrl;
-    console.log('URL changed, re-initializing extension');
+    console.log('[PDF-DL] URL changed to', currentUrl, '- re-initializing');
     // Small delay to let Shopify load the new content
     setTimeout(init, 500);
   }
